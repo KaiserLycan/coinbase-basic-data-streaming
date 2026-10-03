@@ -1,7 +1,20 @@
-from dotenv import load_dotenv
-import os
+# A wrapper library that abstracts the process of communicating with coinbase advance tradaer.
+from coinbase_advanced_trader import EnhancedRESTClient
 
-load_dotenv()
+# List of prices we plan on tracking
+watch_list = ["BTC-USDC", "ETH-USDC"]
 
-API_KEY = os.getenv("COINBASE_API_KEY")
-API_SECRET = os.getenv("COINBASE_API_SECRET")
+client = EnhancedRESTClient()
+
+def print_price(update):
+    print(f"{update.product_id}: {update.price}")
+
+try:
+    client.watch_ticker(
+        watch_list,
+        seconds=60*60*24, #Keeps the websocket open for 24 hours.
+        callback=print_price,
+        print_prices=False
+    )
+except KeyboardInterrupt:
+    print("Stopping stream...")
