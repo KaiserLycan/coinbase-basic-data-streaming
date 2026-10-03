@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  master:
+    image: apache/spark:3.5.3
+    container_name: master
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
+    ports:
+      - "7077:7077"
+      - "8080:8080"
+    volumes:
+      - ./:/app
+
+  worker:
+    image: apache/spark:3.5.3
+    container_name: worker
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://master:7077
+    ports:
+      - "8081:8081"
+    depends_on:
+      - master
+    volumes:
+      - ./:/app
