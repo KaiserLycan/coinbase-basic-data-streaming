@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Coinbase Price Watcher</title>
+  <style>
+    :root {
+      --bg: #f4f6f9; --card: #ffffff; --text: #1c2430; --muted: #6b7686;
+      --border: #e1e5eb; --head: #f0f3f7; --up: #12805c; --down: #c62f2f; --accent: #1652f0;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+    header { background: var(--card); border-bottom: 1px solid var(--border); padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+    h1 { margin: 0; font-size: 20px; }
+    h1 span { color: var(--accent); }
+    .status { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--up); }
+    .dot.error { background: var(--down); }
+    main { padding: 24px; display: grid; gap: 24px; max-width: 1400px; margin: 0 auto; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+    .summary { padding: 16px 20px; display: flex; flex-wrap: wrap; gap: 28px; align-items: baseline; border-bottom: 1px solid var(--border); }
+    .summary h2 { margin: 0; font-size: 18px; }
+    .price { font-size: 28px; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .stat { font-size: 13px; color: var(--muted); }
+    .stat b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+    .up { color: var(--up) !important; } .down { color: var(--down) !important; }
+    .table-wrap { max-height: 420px; overflow: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+    th, td { padding: 8px 12px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--border); }
+    th:first-child, td:first-child { text-align: left; }
+    th { position: sticky; top: 0; background: var(--head); font-weight: 600; color: var(--muted); }
+    tr.new td { animation: flash 1.5s ease-out; }
+    @keyframes flash { from { background: #fff4c2; } to { background: transparent; } }
+    .empty { padding: 24px; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1><span>Coinbase</span> Price Watcher</h1>
+    <div class="status"><span class="dot" id="dot"></span><span id="status">Reading from Cassandra (coinbase.ticker)</span></div>
+  </header>
+  <main id="products"></main>
+
+  <script>
+    // Initial rows rendered by Flask; afterwards the page refreshes itself from /api/ticker.
+    let data = {{ data | tojson }};
+    let seen = new Set();
+    const REFRESH_MS = 3000;
+
+    const num = (v, d = 2) => v == null ? "—" : v.toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
+    const time = iso => new Date(iso).toLocaleTimeString(undefined, { hour12: false }) + "." + iso.slice(20, 23);
+
+    function render() {
+      const main = document.getElementById("products");
+      const products = Object.keys(data);
+      if (products.length === 0) {
+        main.innerHTML = '<div class="card empty">No rows in Cassandra yet. Start the producers and the Spark job.</div>';
+        return;
+      }
+      const firstLoad = seen.size === 0;
+      main.innerHTML = products.map(product => {
+        const rows = data[product];
+        const latest = rows[0];
+        const chg = latest.price_percent_chg_24_h;
+        const cls = chg >= 0 ? "up" : "down";
+        const body = rows.map(r => {
+          const key = product + r.kafka_offset;
+          const isNew = !firstLoad && !seen.has(key);
+          return `<tr class="${isNew ? "new" : ""}">
+            <td>${time(r.event_time)}</td><td>${r.topic}</td><td>${r.kafka_offset}</td>
+            <td>${num(r.price)}</td><td>${num(r.best_bid)}</td><td>${num(r.best_ask)}</td>
+            <td>${num(r.volume_24_h, 4)}</td><td class="${r.price_percent_chg_24_h >= 0 ? "up" : "down"}">${num(r.price_percent_chg_24_h, 3)}%</td>
+            <td>${num(r.high_24_h)}</td><td>${num(r.low_24_h)}</td></tr>`;
+        }).join("");
+        return `<section class="card">
+          <div class="summary">
+            <h2>${product}</h2>
+            <span class="price">${num(latest.price)}</span>
+            <span class="stat">24h change <b class="${cls}">${num(chg, 3)}%</b></span>
+            <span class="stat">24h high <b>${num(latest.high_24_h)}</b></span>
+            <span class="stat">24h low <b>${num(latest.low_24_h)}</b></span>
+            <span class="stat">Latest update <b>${time(latest.event_time)}</b></span>
+            <span class="stat">Showing <b>${rows.length}</b> newest rows</span>
+          </div>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Event time</th><th>Kafka topic</th><th>Offset</th><th>Price</th><th>Best bid</th><th>Best ask</th>
+              <th>24h volume</th><th>24h change</th><th>24h high</th><th>24h low</th></tr></thead>
+            <tbody>${body}</tbody>
+          </table></div>
+        </section>`;
+      }).join("");
+      products.forEach(p => data[p].forEach(r => seen.add(p + r.kafka_offset)));
+    }
+
+    async function refresh() {
+      try {
+        const res = await fetch("/api/ticker");
+        data = await res.json();
+        render();
+        document.getElementById("dot").classList.remove("error");
+        document.getElementById("status").textContent = "Last refreshed " + new Date().toLocaleTimeString(undefined, { hour12: false }) + " · auto-refresh every 3 s";
+      } catch (e) {
+        document.getElementById("dot").classList.add("error");
+        document.getElementById("status").textContent = "Cannot reach Flask/Cassandra — retrying";
+      }
+    }
+
+    render();
+    setInterval(refresh, REFRESH_MS);
+  </script>
+</body>
+</html>
