@@ -16,9 +16,9 @@ Requires Docker, Java 17+ and Spark 4.2.0 (`spark-submit` on the PATH). No Coinb
 
 ## Demo
 
-`./demo.sh` resets the data and opens a tmux session (`tmux attach -t group15`) with every command pre-typed. See [docs/DEMO.md](docs/DEMO.md) for the checklist and video script.
+See [docs/DEMO.md](docs/DEMO.md) for the checklist, commands and video script.
 
-## Run manually (one terminal per step, `source .venv/bin/activate` in each)
+## Run (one terminal per step, `source .venv/bin/activate` in each)
 
 1. Start Kafka and Cassandra: `docker compose up -d kafka cassandra` (Cassandra needs ~1 minute to accept connections)
 2. Create the topics:
