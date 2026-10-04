@@ -4,6 +4,8 @@ from coinbase_advanced_trader import EnhancedRESTClient
 from kafka import KafkaProducer
 # JSON: A Standard library for manipulating/managing JSON within python.
 import json
+# datetime: Used to timestamp each update at the moment it is captured.
+from datetime import datetime, timezone
 
 # List of prices we plan on tracking
 watch_list = ["ETH-USDC"]
@@ -22,14 +24,22 @@ producer = KafkaProducer(
 
 # A function that formats the output of the data received.
 def stream_price(update):
+    # raw_ticker holds the full Coinbase ticker message, which includes the 24-hour statistics.
+    ticker = update.raw_ticker
     payload = {
         "product_id": update.product_id,
+        # The time the update was captured, in UTC ISO-8601 format (used for sorting in Cassandra and Flask).
+        "event_time": datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
         "price" : str(update.price),
         "best_bid" : str(update.best_bid),
-        "best_ask" : str(update.best_ask)
+        "best_ask" : str(update.best_ask),
+        "volume_24_h": ticker.volume_24_h,
+        "price_percent_chg_24_h": ticker.price_percent_chg_24_h,
+        "high_24_h": ticker.high_24_h,
+        "low_24_h": ticker.low_24_h
     }
 
-    # Stream/send the article information to "eth" topic.
+    # Stream/send the ticker update to the "eth" topic.
     producer.send(topic=kafka_topic, value=payload)
     print(payload)
 

@@ -1,9 +1,30 @@
-version: '3.8'
-
 services:
+  # Kafka broker (KRaft mode, no Zookeeper needed), reachable from the host at localhost:9092
+  kafka:
+    image: apache/kafka:latest
+    container_name: kafka
+    ports:
+      - "9092:9092"
+
+  # Cassandra database, reachable from the host at localhost:9042
+  cassandra:
+    image: cassandra:5.0
+    container_name: cassandra
+    ports:
+      - "9042:9042"
+    environment:
+      # Keeps Cassandra's memory usage small enough for a laptop
+      - MAX_HEAP_SIZE=512M
+      - HEAP_NEWSIZE=128M
+    volumes:
+      - ./:/app
+
+  # Optional standalone Spark cluster (start with: docker compose --profile spark-cluster up -d).
+  # The pipeline itself runs Spark locally with spark-submit (Spark 4.2.0).
   master:
     image: apache/spark:3.5.3
     container_name: master
+    profiles: ["spark-cluster"]
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
     ports:
       - "7077:7077"
@@ -14,6 +35,7 @@ services:
   worker:
     image: apache/spark:3.5.3
     container_name: worker
+    profiles: ["spark-cluster"]
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://master:7077
     ports:
       - "8081:8081"
